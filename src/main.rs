@@ -10,7 +10,7 @@ use nrf52840_hal::{
     self as hal,
     gpio::Level,
     gpiote::Gpiote,
-    ieee802154::{Packet, Radio},
+    ieee802154::{Packet, Radio, RecvStatus, Recv},
     timer::Periodic,
     Clocks, Timer,
 };
@@ -22,8 +22,26 @@ use panic_rtt_target as _;
 mod button;
 mod led;
 
-static LED_ON: &[u8] = &[0xba, 0xbe, 0xfa, 0xce];
-static LED_OFF: &[u8] = &[0xde, 0xad, 0xbe, 0xef];
+const LED_ON: &[u8] = &[0xba, 0xbe, 0xfa, 0xce];
+const LED_OFF: &[u8] = &[0xde, 0xad, 0xbe, 0xef];
+
+enum Event {
+    ButtonPushed,
+    PacketReceived,
+}
+
+fn wait_for_event(button: &Button, mut recv: Recv<'_, '_>) -> Event {
+    loop {
+        if button.has_been_pushed() {
+            break Event::ButtonPushed;
+        }
+
+        match recv.is_done() {
+            RecvStatus::NotDone | RecvStatus::CrcFailure(_) => (),
+            RecvStatus::Success(_) => break Event::PacketReceived,
+        }
+    }
+}
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -44,46 +62,42 @@ fn main() -> ! {
     rprintln!("Remote blinky started");
 
     let mut radio_timer = Timer::one_shot(p.TIMER0);
+    let mut packet = Packet::new();
 
     loop {
-        if button.has_been_pushed() {
-            let mut packet = Packet::new();
-            packet.copy_from_slice(LED_ON);
+        let recv = radio.recv_non_blocking(&mut packet);
 
-            for _ in 0..3 {
+        match wait_for_event(&button, recv) {
+            Event::ButtonPushed => {
+                packet.copy_from_slice(LED_ON);
+
                 radio.send(&mut packet);
-            }
 
-            timer.delay(Timer::<TIMER1, Periodic>::TICKS_PER_SECOND);
+                timer.delay(Timer::<TIMER1, Periodic>::TICKS_PER_SECOND);
 
-            while !button.has_been_released() {
-                asm::nop();
-            }
+                while !button.has_been_released() {
+                    asm::nop();
+                }
 
-            packet.copy_from_slice(LED_OFF);
+                packet.copy_from_slice(LED_OFF);
 
-            for _ in 0..3 {
                 radio.send(&mut packet);
+
+                button.clear_events();
             }
+            Event::PacketReceived => {
+                rprintln!("Received packet: {:X?}", packet.deref());
 
-            button.clear_events();
-        }
+                if packet.deref() == LED_ON {
+                    led.on();
 
-        let mut packet = Packet::new();
+                    while radio.recv(&mut packet).is_err() || packet.deref() != LED_OFF {
+                        asm::nop();
+                    }
 
-        if radio
-            .recv_timeout(&mut packet, &mut radio_timer, 1000 * 1000)
-            .is_ok()
-            && packet.deref() == LED_ON
-        {
-            rprintln!("Received packet: {:X?}", packet.deref());
-            led.on();
-
-            while radio.recv(&mut packet).is_err() || packet.deref() != LED_OFF {
-                asm::nop();
+                    led.off();
+                }
             }
-
-            led.off();
         }
     }
 }

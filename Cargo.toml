@@ -10,4 +10,5 @@ nrf52840-pac = { version = "0.12.2", features = ["cortex-m-rt"] }
 rtt-target = "0.4.0"
 panic-rtt-target = { version = "0.1.2", features = ["cortex-m"] }
 embedded-hal = "1.0.0"
-nrf52840-hal = "0.18.0"
+# nrf52840-hal = "0.18.0"
+nrf52840-hal = {path = "../nrf-hal/nrf52840-hal"}

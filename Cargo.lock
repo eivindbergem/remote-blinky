@@ -188,8 +188,6 @@ checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 [[package]]
 name = "nrf-hal-common"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c134de1f2f0191aed3fc24d3831da8808d1e636b06edf81a5717103095f625d"
 dependencies = [
  "cast",
  "cfg-if",
@@ -222,8 +220,6 @@ dependencies = [
 [[package]]
 name = "nrf52840-hal"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "433cfd866da18dfc58376880bdebd092c130444837debc513f44edcd0d6a6558"
 dependencies = [
  "nrf-hal-common",
  "nrf52840-pac",
