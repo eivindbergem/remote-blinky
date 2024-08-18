@@ -10,7 +10,7 @@ use nrf52840_hal::{
     self as hal,
     gpio::Level,
     gpiote::Gpiote,
-    ieee802154::{Packet, Radio, RecvStatus, Recv},
+    ieee802154::{Packet, Radio, Recv},
     timer::Periodic,
     Clocks, Timer,
 };
@@ -36,9 +36,8 @@ fn wait_for_event(button: &Button, mut recv: Recv<'_, '_>) -> Event {
             break Event::ButtonPushed;
         }
 
-        match recv.is_done() {
-            RecvStatus::NotDone | RecvStatus::CrcFailure(_) => (),
-            RecvStatus::Success(_) => break Event::PacketReceived,
+        if recv.is_done().is_ok() {
+            break Event::PacketReceived;
         }
     }
 }
@@ -61,7 +60,6 @@ fn main() -> ! {
 
     rprintln!("Remote blinky started");
 
-    let mut radio_timer = Timer::one_shot(p.TIMER0);
     let mut packet = Packet::new();
 
     loop {
