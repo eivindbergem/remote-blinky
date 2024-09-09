@@ -10,10 +10,10 @@ impl<P: OutputPin> Led<P> {
     }
 
     pub fn on(&mut self) {
-        self.pin.set_low().unwrap();
+        self.pin.set_high().unwrap();
     }
 
     pub fn off(&mut self) {
-        self.pin.set_high().unwrap();
+        self.pin.set_low().unwrap();
     }
 }

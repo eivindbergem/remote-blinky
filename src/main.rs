@@ -10,7 +10,7 @@ use nrf52840_hal::{
     self as hal,
     gpio::Level,
     gpiote::Gpiote,
-    ieee802154::{Packet, Radio, Recv},
+    ieee802154::{Packet, Radio, TxPower},
     timer::Periodic,
     Clocks, Timer,
 };
@@ -22,24 +22,13 @@ use panic_rtt_target as _;
 mod button;
 mod led;
 
-const LED_ON: &[u8] = &[0xba, 0xbe, 0xfa, 0xce];
-const LED_OFF: &[u8] = &[0xde, 0xad, 0xbe, 0xef];
+const LED_ON: &[u8] = b"\xba\xbe\xfa\xce";
+const LED_OFF: &[u8] = b"\xde\xad\xbe\xef";
 
 enum Event {
+    CrcError,
     ButtonPushed,
     PacketReceived,
-}
-
-fn wait_for_event(button: &Button, mut recv: Recv<'_, '_>) -> Event {
-    loop {
-        if button.has_been_pushed() {
-            break Event::ButtonPushed;
-        }
-
-        if recv.is_done().is_ok() {
-            break Event::PacketReceived;
-        }
-    }
 }
 
 #[cortex_m_rt::entry]
@@ -50,11 +39,13 @@ fn main() -> ! {
     let clocks = Clocks::new(p.CLOCK).enable_ext_hfosc();
 
     let mut radio = Radio::init(p.RADIO, &clocks);
+    radio.set_txpower(TxPower::Pos8dBm);
+
     let mut timer = Timer::periodic(p.TIMER1);
 
     let port0 = hal::gpio::p0::Parts::new(p.P0);
-    let mut led = Led::new(port0.p0_08.into_push_pull_output(Level::High));
-    let button_pin = port0.p0_23.into_floating_input().degrade();
+    let mut led = Led::new(port0.p0_03.into_push_pull_output(Level::Low));
+    let button_pin = port0.p0_26.into_pullup_input().degrade();
 
     let button = Button::new(&button_pin, Gpiote::new(p.GPIOTE));
 
@@ -63,9 +54,24 @@ fn main() -> ! {
     let mut packet = Packet::new();
 
     loop {
-        let recv = radio.recv_non_blocking(&mut packet);
+        rprintln!("Waiting for event");
 
-        match wait_for_event(&button, recv) {
+        let event = radio.recv_non_blocking(&mut packet, |recv| loop {
+            if button.has_been_pushed() {
+                rprintln!("Button pushed");
+                break Event::ButtonPushed;
+            }
+
+            match recv.is_done() {
+                Ok(_) => break Event::PacketReceived,
+                Err(nb::Error::WouldBlock) => continue,
+
+                // We have to restart transfer in case of CRC error
+                Err(nb::Error::Other(_)) => break Event::CrcError,
+            }
+        });
+
+        match event {
             Event::ButtonPushed => {
                 packet.copy_from_slice(LED_ON);
 
@@ -73,6 +79,7 @@ fn main() -> ! {
 
                 timer.delay(Timer::<TIMER1, Periodic>::TICKS_PER_SECOND);
 
+                rprintln!("Waiting for release");
                 while !button.has_been_released() {
                     asm::nop();
                 }
@@ -87,15 +94,18 @@ fn main() -> ! {
                 rprintln!("Received packet: {:X?}", packet.deref());
 
                 if packet.deref() == LED_ON {
+                    rprintln!("Turning on LED");
                     led.on();
 
                     while radio.recv(&mut packet).is_err() || packet.deref() != LED_OFF {
                         asm::nop();
                     }
 
+                    rprintln!("Turning off LED");
                     led.off();
                 }
             }
+            Event::CrcError => (),
         }
     }
 }

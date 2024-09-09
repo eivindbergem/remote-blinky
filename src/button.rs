@@ -1,5 +1,5 @@
 use nrf52840_hal::{
-    gpio::{Floating, Input, Pin},
+    gpio::{Input, Pin, PullUp},
     gpiote::Gpiote,
 };
 
@@ -8,7 +8,7 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(pin: &Pin<Input<Floating>>, gpiote: Gpiote) -> Self {
+    pub fn new(pin: &Pin<Input<PullUp>>, gpiote: Gpiote) -> Self {
         gpiote.channel0().input_pin(pin).hi_to_lo();
         gpiote.channel1().input_pin(pin).lo_to_hi();
 
