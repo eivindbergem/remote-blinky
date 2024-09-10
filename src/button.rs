@@ -1,3 +1,4 @@
+use embedded_hal::{delay::DelayNs, digital::InputPin};
 use nrf52840_hal::{
     gpio::{Input, Pin, PullUp},
     gpiote::Gpiote,
@@ -5,25 +6,55 @@ use nrf52840_hal::{
 
 pub struct Button {
     gpiote: Gpiote,
+    pin: Pin<Input<PullUp>>,
+}
+
+pub enum Event {
+    Pushed,
+    Released,
 }
 
 impl Button {
-    pub fn new(pin: &Pin<Input<PullUp>>, gpiote: Gpiote) -> Self {
-        gpiote.channel0().input_pin(pin).hi_to_lo();
-        gpiote.channel1().input_pin(pin).lo_to_hi();
+    pub fn new(pin: Pin<Input<PullUp>>, gpiote: Gpiote) -> Self {
+        // Add new event on any change of pin state
+        gpiote.channel0().input_pin(&pin).toggle();
 
-        Self { gpiote }
+        Self { gpiote, pin }
     }
 
-    pub fn has_been_pushed(&self) -> bool {
-        self.gpiote.channel0().is_event_triggered()
-    }
+    pub fn debounced_event<T: DelayNs>(&mut self, timer: &mut T) -> Option<Event> {
+        // Check for event
+        if self.gpiote.channel0().is_event_triggered() {
+            let mut i = 0;
+            let mut is_high = self.pin.is_high().unwrap();
 
-    pub fn has_been_released(&self) -> bool {
-        self.gpiote.channel1().is_event_triggered()
-    }
+            // Debounce signal
+            while i < 10 {
+                // Add short delay between samples
+                timer.delay_ms(1);
 
-    pub fn clear_events(&self) {
-        self.gpiote.reset_events();
+                let new_value = self.pin.is_high().unwrap();
+
+                if new_value != is_high {
+                    is_high = new_value;
+                    i = 0;
+                } else {
+                    i += 1;
+                }
+            }
+
+            // Reset all events that happend during debounce
+            self.gpiote.reset_events();
+
+            let event = if is_high {
+                Event::Released
+            } else {
+                Event::Pushed
+            };
+
+            Some(event)
+        } else {
+            None
+        }
     }
 }

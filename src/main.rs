@@ -47,7 +47,7 @@ fn main() -> ! {
     let mut led = Led::new(port0.p0_03.into_push_pull_output(Level::Low));
     let button_pin = port0.p0_26.into_pullup_input().degrade();
 
-    let button = Button::new(&button_pin, Gpiote::new(p.GPIOTE));
+    let mut button = Button::new(button_pin, Gpiote::new(p.GPIOTE));
 
     rprintln!("Remote blinky started");
 
@@ -57,7 +57,10 @@ fn main() -> ! {
         rprintln!("Waiting for event");
 
         let event = radio.recv_non_blocking(&mut packet, |recv| loop {
-            if button.has_been_pushed() {
+            if matches!(
+                button.debounced_event(&mut timer),
+                Some(button::Event::Pushed)
+            ) {
                 rprintln!("Button pushed");
                 break Event::ButtonPushed;
             }
@@ -80,15 +83,16 @@ fn main() -> ! {
                 timer.delay(Timer::<TIMER1, Periodic>::TICKS_PER_SECOND);
 
                 rprintln!("Waiting for release");
-                while !button.has_been_released() {
+                while !matches!(
+                    button.debounced_event(&mut timer),
+                    Some(button::Event::Released)
+                ) {
                     asm::nop();
                 }
 
                 packet.copy_from_slice(LED_OFF);
 
                 radio.send(&mut packet);
-
-                button.clear_events();
             }
             Event::PacketReceived => {
                 rprintln!("Received packet: {:X?}", packet.deref());
