@@ -5,6 +5,7 @@ Code from [presentation at NDC TechTown
 
 ## Requirements
 
+- nRF52840
 - [Rust](https://www.rust-lang.org/tools/install)
 - `rustup target add thumbv7em-none-eabihf`
 - `cargo install probe-rs-tools --locked`
