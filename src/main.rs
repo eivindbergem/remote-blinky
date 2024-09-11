@@ -86,9 +86,7 @@ fn main() -> ! {
                 while !matches!(
                     button.debounced_event(&mut timer),
                     Some(button::Event::Released)
-                ) {
-                    asm::nop();
-                }
+                ) {}
 
                 packet.copy_from_slice(LED_OFF);
 
@@ -101,9 +99,8 @@ fn main() -> ! {
                     rprintln!("Turning on LED");
                     led.on();
 
-                    while radio.recv(&mut packet).is_err() || packet.deref() != LED_OFF {
-                        asm::nop();
-                    }
+                    // Wait for a LED_OFF command
+                    while radio.recv(&mut packet).is_err() || packet.deref() != LED_OFF {}
 
                     rprintln!("Turning off LED");
                     led.off();
